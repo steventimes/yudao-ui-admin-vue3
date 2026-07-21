@@ -33,7 +33,7 @@
       <el-table-column prop="status" label="状态" width="120" />
       <el-table-column label="操作" width="260" fixed="right">
         <template #default="{ row }">
-          <el-button link @click="detailDrawerRef?.open(row)">详情</el-button>
+          <el-button link @click="openDetail(row)">详情</el-button>
           <el-button v-if="row.status === 0 || row.status === 30" link @click="openEdit(row)"
             >编辑</el-button
           >
@@ -92,6 +92,7 @@ const loadList = async () => {
   total.value = data.total || 0
 }
 const openCreate = () => formRef.value?.open('create')
+const openDetail = async (row: any) => detailDrawerRef.value?.open(await getClaim(row.id))
 const openEdit = async (row: any) => formRef.value?.open('update', await getClaim(row.id))
 const openConfirm = async (row: any) => formRef.value?.open('confirm', await getClaim(row.id))
 const submit = async (row: any) => {

@@ -24,7 +24,7 @@
     </el-form>
     <template #footer
       ><el-button @click="visible = false">取消</el-button
-      ><el-button type="primary" @click="startImport">启动导入</el-button></template
+      ><el-button type="primary" :loading="importing" @click="startImport">启动导入</el-button></template
     >
   </Dialog>
 </template>
@@ -32,10 +32,12 @@
 import { getClaim, startMailImport } from '@/api/reimbursement'
 import { getMailboxPage } from '@/api/reimbursement/mailbox'
 const emit = defineEmits(['finished'])
+const importing = ref(false)
 const visible = ref(false)
 const mailboxes = ref<any[]>([])
 let timer: number | undefined
 const formData = reactive<any>({
+  mailboxConnectionId: undefined,
   folder: 'INBOX',
   lookbackDays: 30,
   unreadOnly: false,
@@ -51,18 +53,28 @@ const clearPoller = () => {
   timer = undefined
 }
 const startImport = async () => {
-  const result = await startMailImport(formData)
-  visible.value = false
-  let count = 0
-  clearPoller()
-  timer = window.setInterval(async () => {
-    count += 1
-    const claim = await getClaim(result.reimbursementId)
-    if (claim.status !== 10 || count >= 60) {
-      clearPoller()
-      emit('finished', claim)
-    }
-  }, 2000)
+  if (!formData.mailboxConnectionId) return
+  importing.value = true
+  try {
+    const result = await startMailImport(formData)
+    visible.value = false
+    let count = 0
+    clearPoller()
+    timer = window.setInterval(async () => {
+      count += 1
+      try {
+        const claim = await getClaim(result.reimbursementId)
+        if (claim.status !== 10 || count >= 60) {
+          clearPoller()
+          emit('finished', claim)
+        }
+      } catch {
+        clearPoller()
+      }
+    }, 2000)
+  } finally {
+    importing.value = false
+  }
 }
 onUnmounted(clearPoller)
 defineExpose({ open })

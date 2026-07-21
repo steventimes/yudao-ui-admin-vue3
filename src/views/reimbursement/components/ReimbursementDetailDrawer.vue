@@ -20,15 +20,21 @@
       <el-table-column prop="sha256" label="SHA-256" min-width="220" />
       <el-table-column label="预览"
         ><template #default="{ row }"
-          ><el-link :href="row.fileUrl" target="_blank">打开</el-link></template
+          ><el-link @click="openAttachment(row)">打开</el-link></template
         ></el-table-column
       >
     </el-table>
   </el-drawer>
 </template>
 <script setup lang="ts">
+import { getAttachmentAccessUrl } from '@/api/reimbursement'
+
 const visible = ref(false)
 const record = ref<any>()
+const openAttachment = async (row: any) => {
+  const url = await getAttachmentAccessUrl(record.value.id, row.id)
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 const open = (row: any) => {
   record.value = row
   visible.value = true
