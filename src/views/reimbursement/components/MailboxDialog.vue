@@ -29,8 +29,18 @@
     </el-form>
     <el-table :data="mailboxes" border>
       <el-table-column prop="emailNormalized" label="邮箱" />
-      <el-table-column prop="providerCode" label="类型" />
-      <el-table-column prop="status" label="状态" />
+      <el-table-column label="类型"
+        ><template #default="{ row }">{{
+          providerLabel(row.providerCode)
+        }}</template></el-table-column
+      >
+      <el-table-column label="状态"
+        ><template #default="{ row }"
+          ><el-tag :type="row.status === 1 ? 'success' : 'warning'">{{
+            statusLabel(row.status)
+          }}</el-tag></template
+        ></el-table-column
+      >
       <el-table-column label="操作"
         ><template #default="{ row }"
           ><el-button link @click="verify(row.id)">验证</el-button
@@ -60,6 +70,11 @@ const formData = reactive<any>({
   authorizationCode: '',
   tlsVerification: 'strict'
 })
+const providerLabel = (value: string) =>
+  (({ QQ_MAIL: 'QQ 邮箱', CUSTOM_IMAPS: '自定义 IMAPS' }) as Record<string, string>)[value] ||
+  value ||
+  '未知'
+const statusLabel = (value: number) => (value === 1 ? '已验证' : '未验证')
 const load = async () => {
   mailboxes.value = (await getMailboxPage({ pageNo: 1, pageSize: 20 })).list || []
 }

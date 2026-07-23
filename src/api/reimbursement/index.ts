@@ -23,6 +23,10 @@ export const createClaim = async (data: ReimbursementClaimVO) => {
   return await request.post({ url: '/reimbursement/claim/create', data })
 }
 
+export const deleteClaim = async (id: number) => {
+  return await request.delete({ url: '/reimbursement/claim/delete?id=' + id })
+}
+
 export const updateClaim = async (data: ReimbursementClaimVO) => {
   return await request.put({ url: '/reimbursement/claim/update', data })
 }
