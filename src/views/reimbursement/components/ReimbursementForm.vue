@@ -64,20 +64,20 @@
       ><el-button class="mt-3" @click="addItem">添加明细</el-button> </el-form
     ><template #footer
       ><el-button @click="visible = false">取消</el-button
-      ><el-button type="primary" :loading="saving" :disabled="saving" @click="submitForm">{{
-        mode === 'confirm' ? '保存修改' : '保存'
-      }}</el-button></template
+      ><el-button type="primary" :loading="saving" :disabled="saving" @click="submitForm"
+        >保存</el-button
+      ></template
     >
   </Dialog>
 </template>
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
-import { createClaim, updateClaim, confirmClaim } from '@/api/reimbursement'
+import { createClaim, updateClaim } from '@/api/reimbursement'
 const emit = defineEmits(['success']),
   visible = ref(false),
   saving = ref(false),
   title = ref('新建报销'),
-  mode = ref<'create' | 'update' | 'confirm'>('create')
+  mode = ref<'create' | 'update'>('create')
 const expenseTypes = [
     { label: '交通', value: 'TRANSPORT' },
     { label: '餐饮', value: 'MEAL' },
@@ -97,10 +97,9 @@ const normalizeExpenseDate = (value: unknown) => {
   return value || ''
 }
 
-const open = (type: 'create' | 'update' | 'confirm', row?: any) => {
+const open = (type: 'create' | 'update', row?: any) => {
   mode.value = type
-  title.value =
-    type === 'create' ? '新建报销' : type === 'confirm' ? '编辑并确认 AI 结果' : '编辑报销'
+  title.value = type === 'create' ? '新建报销' : '编辑报销'
   Object.assign(formData, {
     id: row?.id,
     reason: row?.reason || '',
@@ -133,7 +132,6 @@ const submitForm = async () => {
   try {
     if (mode.value === 'create') await createClaim(formData)
     if (mode.value === 'update') await updateClaim(formData)
-    if (mode.value === 'confirm') await confirmClaim(formData)
     visible.value = false
     emit('success')
   } finally {

@@ -31,10 +31,6 @@ export const updateClaim = async (data: ReimbursementClaimVO) => {
   return await request.put({ url: '/reimbursement/claim/update', data })
 }
 
-export const confirmClaim = async (data: ReimbursementClaimVO) => {
-  return await request.post({ url: '/reimbursement/claim/confirm', data })
-}
-
 export const submitClaim = async (data: {
   id: number
   startUserSelectAssignees?: Record<string, number[]>

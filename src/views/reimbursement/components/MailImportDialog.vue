@@ -63,7 +63,7 @@ const formData = reactive<any>({
   lookbackDays: 30,
   dateRange: [],
   unreadOnly: false,
-  subjectKeywords: '发票,票据,报销,invoice,receipt',
+  subjectKeywords: '发票,票据,报销,invoice,receipt,reimbursement',
   senderContains: '',
   maxMessages: 20
 })

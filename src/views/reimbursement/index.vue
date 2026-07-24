@@ -59,19 +59,13 @@
         ><template #default="{ row }"
           ><el-button link @click="openDetail(row)">详情</el-button
           ><el-button
-            v-if="row.status === 0 || row.status === 30"
+            v-if="row.status === 0 || row.status === 20 || row.status === 30"
             v-hasPermi="['reimbursement:claim:update']"
             link
             @click="openEdit(row)"
             >编辑</el-button
           ><el-button
-            v-if="row.status === 20"
-            v-hasPermi="['reimbursement:claim:update']"
-            link
-            @click="openConfirm(row)"
-            >编辑确认</el-button
-          ><el-button
-            v-if="row.status === 0"
+            v-if="row.status === 0 || row.status === 20"
             v-hasPermi="['reimbursement:claim:submit']"
             link
             type="primary"
@@ -79,7 +73,7 @@
             >提交</el-button
           ><el-button v-if="row.status === 40" link @click="openProcess(row)">进度</el-button
           ><el-button
-            v-if="row.status === 0 || row.status === 30"
+            v-if="row.status === 0 || row.status === 20 || row.status === 30"
             link
             v-hasPermi="['reimbursement:claim:delete']"
             type="danger"
@@ -159,7 +153,6 @@ const handleQuery = () => {
 const openCreate = () => formRef.value?.open('create')
 const openDetail = async (row: any) => detailDrawerRef.value?.open(await getClaim(row.id))
 const openEdit = async (row: any) => formRef.value?.open('update', await getClaim(row.id))
-const openConfirm = async (row: any) => formRef.value?.open('confirm', await getClaim(row.id))
 const submit = async (row: any) => {
   await submitClaim({ id: row.id })
   await loadList()
