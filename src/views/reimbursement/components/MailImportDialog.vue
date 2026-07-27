@@ -47,11 +47,16 @@
   </Dialog>
 </template>
 <script setup lang="ts">
-import { getClaim, startMailImport } from '@/api/reimbursement'
+import {
+  getClaim,
+  startMailImport,
+  type ReimbursementId,
+  type ReimbursementMailImportStartReqVO
+} from '@/api/reimbursement'
 import { ElMessage } from 'element-plus'
 import dayjs from 'dayjs'
 import { getMailboxPage } from '@/api/reimbursement/mailbox'
-import { reimbursementFailureMessageLabel } from '../failureMessage'
+import { isNoReimbursableDataFailure, reimbursementFailureMessageLabel } from '../failureMessage'
 const emit = defineEmits(['started', 'finished'])
 const MAX_DATE_RANGE_DAYS = 365
 const importing = ref(false)
@@ -62,7 +67,7 @@ interface ImportPollState {
   polling: boolean
   consecutiveFailures: number
 }
-const pollers = new Map<number, ImportPollState>()
+const pollers = new Map<ReimbursementId, ImportPollState>()
 const formData = reactive<any>({
   mailboxConnectionId: undefined,
   folder: 'INBOX',
@@ -82,7 +87,7 @@ const open = async () => {
     // 请求拦截器已经展示失败原因。
   }
 }
-const clearPoller = (reimbursementId: number) => {
+const clearPoller = (reimbursementId: ReimbursementId) => {
   const state = pollers.get(reimbursementId)
   if (state?.timer) window.clearInterval(state.timer)
   pollers.delete(reimbursementId)
@@ -90,7 +95,7 @@ const clearPoller = (reimbursementId: number) => {
 const clearAllPollers = () => {
   for (const reimbursementId of pollers.keys()) clearPoller(reimbursementId)
 }
-const pollImportResult = async (reimbursementId: number) => {
+const pollImportResult = async (reimbursementId: ReimbursementId) => {
   const state = pollers.get(reimbursementId)
   if (!state || state.polling) return
   state.polling = true
@@ -104,6 +109,8 @@ const pollImportResult = async (reimbursementId: number) => {
       ElMessage.success('邮箱报销明细已生成，请确认后提交')
     } else if (claim.status === 40) {
       ElMessage.success('邮箱报销明细已生成并自动提交')
+    } else if (claim.status === 30 && isNoReimbursableDataFailure(claim.aiFailureMessage)) {
+      ElMessage.warning(reimbursementFailureMessageLabel(claim.aiFailureMessage))
     } else if (claim.status === 30) {
       ElMessage.error(
         reimbursementFailureMessageLabel(claim.aiFailureMessage) || '邮箱导入失败，请稍后重试'
@@ -122,7 +129,7 @@ const pollImportResult = async (reimbursementId: number) => {
     state.polling = false
   }
 }
-const startPoller = (reimbursementId: number) => {
+const startPoller = (reimbursementId: ReimbursementId) => {
   clearPoller(reimbursementId)
   const state: ImportPollState = { polling: false, consecutiveFailures: 0 }
   pollers.set(reimbursementId, state)
@@ -130,6 +137,7 @@ const startPoller = (reimbursementId: number) => {
   void pollImportResult(reimbursementId)
 }
 const startImport = async () => {
+  if (importing.value) return
   if (!formData.mailboxConnectionId) {
     ElMessage.warning('请先选择已验证邮箱')
     return
@@ -147,7 +155,7 @@ const startImport = async () => {
   }
   importing.value = true
   try {
-    const requestData = {
+    const requestData: ReimbursementMailImportStartReqVO = {
       mailboxConnectionId: formData.mailboxConnectionId,
       folder: formData.folder,
       lookbackDays: formData.timeFilterMode === 'lookback' ? formData.lookbackDays : null,

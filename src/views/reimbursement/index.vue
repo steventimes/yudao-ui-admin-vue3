@@ -51,12 +51,24 @@
       <el-table-column label="状态" width="240"
         ><template #default="{ row }">
           <div class="status-cell">
-            <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
-            <span v-if="row.status === 30 && row.aiFailureMessage" class="status-failure">
+            <el-tag :type="statusTagType(row)">{{ statusLabel(row) }}</el-tag>
+            <span
+              v-if="
+                row.status === 30 &&
+                row.aiFailureMessage &&
+                !isNoReimbursableDataFailure(row.aiFailureMessage)
+              "
+              class="status-failure"
+            >
               {{ reimbursementFailureMessageLabel(row.aiFailureMessage) }}
             </span>
           </div>
         </template></el-table-column
+      >
+      <el-table-column label="提交报销时间" min-width="170"
+        ><template #default="{ row }">{{
+          formatSubmitTime(row.submitTime)
+        }}</template></el-table-column
       >
       <el-table-column label="操作" width="260" fixed="right"
         ><template #default="{ row }"
@@ -99,15 +111,23 @@
   <MailImportDialog ref="mailImportDialogRef" @started="loadList" @finished="loadList" />
 </template>
 <script setup lang="ts">
-import { deleteClaim, getClaim, getClaimPage, submitClaim } from '@/api/reimbursement'
+import {
+  deleteClaim,
+  getClaim,
+  getClaimPage,
+  submitClaim,
+  type ReimbursementClaimPageReqVO,
+  type ReimbursementClaimResponseVO
+} from '@/api/reimbursement'
+import { formatNullableDate } from '@/utils/formatTime'
 import ReimbursementForm from './components/ReimbursementForm.vue'
 import ReimbursementDetailDrawer from './components/ReimbursementDetailDrawer.vue'
 import MailboxDialog from './components/MailboxDialog.vue'
 import MailImportDialog from './components/MailImportDialog.vue'
-import { reimbursementFailureMessageLabel } from './failureMessage'
+import { isNoReimbursableDataFailure, reimbursementFailureMessageLabel } from './failureMessage'
 defineOptions({ name: 'ReimbursementClaim' })
 const router = useRouter(),
-  list = ref<any[]>([]),
+  list = ref<ReimbursementClaimResponseVO[]>([]),
   total = ref(0),
   formRef = ref(),
   detailDrawerRef = ref(),
@@ -116,7 +136,8 @@ const router = useRouter(),
 let processingRefreshTimer: number | undefined
 let listLoading = false
 let listReloadPending = false
-const queryParams = reactive<any>({
+let componentActive = false
+const queryParams = reactive<ReimbursementClaimPageReqVO>({
   pageNo: 1,
   pageSize: 10,
   status: undefined,
@@ -136,24 +157,34 @@ const sourceOptions = [
   { label: 'AI 邮件', value: 'AI_EMAIL' },
   { label: 'AI 邮件（历史数据）', value: 'AI' }
 ]
-const statusLabel = (value: number) =>
-  statusOptions.find((item) => item.value === value)?.label || `状态 ${value}`
+const statusLabel = (row: ReimbursementClaimResponseVO) =>
+  row.status === 30 && isNoReimbursableDataFailure(row.aiFailureMessage)
+    ? '未找到可报销数据'
+    : statusOptions.find((item) => item.value === row.status)?.label || `状态 ${row.status}`
 const sourceLabel = (value: string) =>
   sourceOptions.find((item) => item.value === value)?.label || value || '未知'
-const statusTagType = (value: number) =>
-  value === 30
-    ? 'danger'
-    : value === 40 || value === 5
-      ? 'success'
-      : value === 20
-        ? 'warning'
-        : 'info'
+const formatSubmitTime = (value?: number | null) =>
+  formatNullableDate(value === undefined || value === null ? null : new Date(value))
+const statusTagType = (row: ReimbursementClaimResponseVO) => {
+  if (row.status === 30 && isNoReimbursableDataFailure(row.aiFailureMessage)) return 'warning'
+  switch (row.status) {
+    case 30:
+      return 'danger'
+    case 5:
+    case 40:
+      return 'success'
+    case 20:
+      return 'warning'
+    default:
+      return 'info'
+  }
+}
 const stopProcessingRefresh = () => {
   if (processingRefreshTimer) window.clearInterval(processingRefreshTimer)
   processingRefreshTimer = undefined
 }
 const syncProcessingRefresh = () => {
-  if (!list.value.some((row) => row.status === 10)) {
+  if (!componentActive || !list.value.some((row) => row.status === 10)) {
     stopProcessingRefresh()
     return
   }
@@ -174,13 +205,13 @@ const loadList = async () => {
       list.value = data.list || []
       total.value = data.total || 0
       syncProcessingRefresh()
-    } while (listReloadPending)
+    } while (listReloadPending && componentActive)
   } catch {
     // 请求拦截器已经展示失败原因；停止自动刷新，避免持续失败时重复提示。
     stopProcessingRefresh()
   } finally {
     listLoading = false
-    if (listReloadPending) void loadList()
+    if (listReloadPending && componentActive) void loadList()
   }
 }
 const handleQuery = () => {
@@ -188,21 +219,21 @@ const handleQuery = () => {
   void loadList()
 }
 const openCreate = () => formRef.value?.open('create')
-const openDetail = async (row: any) => {
+const openDetail = async (row: ReimbursementClaimResponseVO) => {
   try {
     detailDrawerRef.value?.open(await getClaim(row.id))
   } catch {
     // 请求拦截器已经展示失败原因。
   }
 }
-const openEdit = async (row: any) => {
+const openEdit = async (row: ReimbursementClaimResponseVO) => {
   try {
     formRef.value?.open('update', await getClaim(row.id))
   } catch {
     // 请求拦截器已经展示失败原因。
   }
 }
-const submit = async (row: any) => {
+const submit = async (row: ReimbursementClaimResponseVO) => {
   try {
     await submitClaim({ id: row.id })
     await loadList()
@@ -210,7 +241,7 @@ const submit = async (row: any) => {
     // 请求拦截器已经展示失败原因。
   }
 }
-const remove = async (row: any) => {
+const remove = async (row: ReimbursementClaimResponseVO) => {
   try {
     await ElMessageBox.confirm(
       `确定删除报销单 ${row.reimbursementNo} 吗？删除后不可恢复。`,
@@ -228,19 +259,29 @@ const remove = async (row: any) => {
     // 请求拦截器已经展示失败原因。
   }
 }
-const openProcess = (row: any) =>
+const openProcess = (row: ReimbursementClaimResponseVO) =>
   router.push({ name: 'BpmProcessInstanceDetail', query: { id: row.processInstanceId } })
 let initialActivation = true
-onMounted(loadList)
+onMounted(() => {
+  componentActive = true
+  void loadList()
+})
 onActivated(() => {
+  componentActive = true
   if (initialActivation) {
     initialActivation = false
     return
   }
   void loadList()
 })
-onDeactivated(stopProcessingRefresh)
-onUnmounted(stopProcessingRefresh)
+onDeactivated(() => {
+  componentActive = false
+  stopProcessingRefresh()
+})
+onUnmounted(() => {
+  componentActive = false
+  stopProcessingRefresh()
+})
 </script>
 <style scoped>
 .reimbursement-filter-form {

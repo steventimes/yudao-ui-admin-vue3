@@ -2,8 +2,9 @@ const failureMessageLabels: Record<string, string> = {
   NO_REIMBURSABLE_DATA: '未找到可报销数据',
   SEARCH_INCOMPLETE:
     '邮箱搜索结果不完整，系统未创建报销明细。请缩短日期范围或提高“最大邮件数”后重试',
-  DIFY_WORKFLOW_FAILED: '邮箱读取或 AI 工作流执行失败，请检查配置后重试',
+  DIFY_WORKFLOW_FAILED: '邮箱读取或 AI 工作流执行失败，请重新发起；若持续失败请联系管理员查看运行记录',
   DIFY_WORKFLOW_TIMEOUT: 'AI 处理超时或服务曾重启，本次导入已结束，请重新发起',
+  ATTACHMENT_EXTRACTION_FAILED: '邮件附件无法读取或文件已损坏，请检查附件后重新发起导入',
   DUPLICATE_EMAIL_IMPORT: '该邮箱邮件已经生成过报销单，已阻止重复导入',
   IMAP_AUTH_FAILED: '邮箱认证失败，请更新邮箱授权码并重新验证',
   IMAP_NETWORK_ERROR: '无法连接邮箱服务器，请检查网络、主机和端口后重试',
@@ -46,17 +47,26 @@ const failureMessageLabels: Record<string, string> = {
   ARTIFACT_HASH_NOT_MATCH: '邮件附件完整性校验失败，请重新发起导入',
   'Dify workflow completed without ai-fill':
     '工作流已结束但没有回填报销明细，请检查 Dify 工作流配置',
-  'Dify workflow failed': 'Dify 工作流调用失败，请检查配置或稍后重试'
+  'Dify workflow failed': 'Dify 工作流调用失败，请稍后重试；若持续失败请联系管理员'
 }
 
 export const reimbursementFailureMessageLabel = (value: unknown) => {
   const message = String(value || '').trim()
   if (!message) return ''
 
+  const code = reimbursementFailureCode(message)
   const separatorIndex = message.indexOf(':')
-  const code = separatorIndex >= 0 ? message.slice(0, separatorIndex).trim() : message
   const detail = separatorIndex >= 0 ? message.slice(separatorIndex + 1).trim() : ''
   const label = failureMessageLabels[code]
   if (!label) return message
   return detail ? `${label}。详情：${detail}` : label
 }
+
+export const reimbursementFailureCode = (value: unknown) => {
+  const message = String(value || '').trim()
+  const separatorIndex = message.indexOf(':')
+  return separatorIndex >= 0 ? message.slice(0, separatorIndex).trim() : message
+}
+
+export const isNoReimbursableDataFailure = (value: unknown) =>
+  reimbursementFailureCode(value) === 'NO_REIMBURSABLE_DATA'

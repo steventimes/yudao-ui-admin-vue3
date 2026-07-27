@@ -2,7 +2,10 @@
   <el-drawer v-model="visible" title="报销详情" size="60%"
     ><el-descriptions v-if="record" :column="2" border>
       <el-descriptions-item label="单号">{{ record.reimbursementNo }}</el-descriptions-item
-      ><el-descriptions-item label="状态">{{ statusLabel(record.status) }}</el-descriptions-item
+      ><el-descriptions-item label="状态">{{ statusLabel(record) }}</el-descriptions-item
+      ><el-descriptions-item label="提交报销时间">{{
+        formatSubmitTime(record.submitTime)
+      }}</el-descriptions-item
       ><el-descriptions-item label="来源">{{ sourceLabel(record.source) }}</el-descriptions-item
       ><el-descriptions-item label="总金额">{{ record.totalAmount }}</el-descriptions-item
       ><el-descriptions-item label="事由" :span="2">{{ record.reason }}</el-descriptions-item
@@ -12,11 +15,17 @@
     ><el-alert
       v-if="record?.status === 30 && record?.aiFailureMessage"
       class="mt-4"
-      type="error"
+      :type="isNoReimbursableDataFailure(record.aiFailureMessage) ? 'warning' : 'error'"
       show-icon
       :closable="false"
-      title="AI 处理失败"
-      :description="failureMessageLabel(record.aiFailureMessage)"
+      :title="
+        isNoReimbursableDataFailure(record.aiFailureMessage) ? '未找到可报销数据' : 'AI 处理失败'
+      "
+      :description="
+        isNoReimbursableDataFailure(record.aiFailureMessage)
+          ? undefined
+          : failureMessageLabel(record.aiFailureMessage)
+      "
     /><el-table :data="record?.items || []" class="mt-4" border table-layout="auto"
       ><el-table-column label="日期" min-width="110"
         ><template #default="{ row }">{{
@@ -50,22 +59,36 @@
   >
 </template>
 <script setup lang="ts">
-import { getAttachmentAccessUrl } from '@/api/reimbursement'
+import {
+  getAttachmentAccessUrl,
+  type ReimbursementAttachmentVO,
+  type ReimbursementClaimResponseVO
+} from '@/api/reimbursement'
+import { formatNullableDate } from '@/utils/formatTime'
 import { ElMessage } from 'element-plus'
-import { reimbursementFailureMessageLabel as failureMessageLabel } from '../failureMessage'
+import {
+  isNoReimbursableDataFailure,
+  reimbursementFailureMessageLabel as failureMessageLabel
+} from '../failureMessage'
 const visible = ref(false),
-  record = ref<any>()
-const statusLabel = (value: number) =>
-  (
-    ({
-      0: '草稿',
-      5: '已完成（历史数据）',
-      10: 'AI 处理中',
-      20: 'AI 待确认',
-      30: 'AI 失败',
-      40: '已提交'
-    }) as Record<number, string>
-  )[value] || `状态 ${value}`
+  record = ref<ReimbursementClaimResponseVO>()
+const statusLabel = (claim: ReimbursementClaimResponseVO) => {
+  if (claim.status === 30 && isNoReimbursableDataFailure(claim.aiFailureMessage)) {
+    return '未找到可报销数据'
+  }
+  return (
+    (
+      {
+        0: '草稿',
+        5: '已完成（历史数据）',
+        10: 'AI 处理中',
+        20: 'AI 待确认',
+        30: 'AI 失败',
+        40: '已提交'
+      } as Record<number, string>
+    )[claim.status] || `状态 ${claim.status}`
+  )
+}
 const sourceLabel = (value: string) =>
   (
     ({ MANUAL: '人工创建', AI_EMAIL: 'AI 邮件', AI: 'AI 邮件（历史数据）' }) as Record<
@@ -75,6 +98,8 @@ const sourceLabel = (value: string) =>
   )[value] ||
   value ||
   '未知'
+const formatSubmitTime = (value?: number | null) =>
+  formatNullableDate(value === undefined || value === null ? null : new Date(value))
 const expenseTypeLabel = (value: string) =>
   (
     ({ TRANSPORT: '交通', MEAL: '餐饮', LODGING: '住宿', OFFICE: '办公', OTHER: '其他' }) as Record<
@@ -91,10 +116,12 @@ const formatExpenseDate = (value: unknown) => {
   }
   return value ? String(value) : '-'
 }
-const openAttachment = async (row: any) => {
+const openAttachment = async (row: ReimbursementAttachmentVO) => {
+  const reimbursement = record.value
+  if (!reimbursement) return
   let url: string
   try {
-    url = await getAttachmentAccessUrl(record.value.id, row.id)
+    url = await getAttachmentAccessUrl(reimbursement.id, row.id)
   } catch {
     // 请求拦截器已经展示失败原因。
     return
@@ -112,7 +139,7 @@ const openAttachment = async (row: any) => {
   }
   window.open(parsedUrl.toString(), '_blank', 'noopener,noreferrer')
 }
-const open = (row: any) => {
+const open = (row: ReimbursementClaimResponseVO) => {
   record.value = row
   visible.value = true
 }

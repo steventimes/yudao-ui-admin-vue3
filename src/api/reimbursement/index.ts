@@ -1,9 +1,12 @@
 import request from '@/config/axios'
 
+export type ReimbursementId = number | string
+export type ReimbursementDateValue = string | number[]
+
 export interface ReimbursementItemVO {
-  id?: number
+  id?: ReimbursementId
   clientItemId?: string
-  expenseDate: string
+  expenseDate: ReimbursementDateValue
   expenseType: string
   merchantName?: string
   amount: number
@@ -13,45 +16,107 @@ export interface ReimbursementItemVO {
 }
 
 export interface ReimbursementClaimVO {
-  id?: number
+  id?: ReimbursementId
   reason: string
   currency?: string
   items: ReimbursementItemVO[]
 }
 
-export const createClaim = async (data: ReimbursementClaimVO) => {
-  return await request.post({ url: '/reimbursement/claim/create', data })
+export interface ReimbursementAttachmentVO {
+  id: ReimbursementId
+  itemId?: ReimbursementId
+  externalArtifactId?: string
+  fileName: string
+  mimeType?: string
+  size?: ReimbursementId
+  sha256?: string
+  documentType?: string
 }
 
-export const deleteClaim = async (id: number) => {
-  return await request.delete({ url: '/reimbursement/claim/delete?id=' + id })
+export interface ReimbursementClaimResponseVO extends ReimbursementClaimVO {
+  id: ReimbursementId
+  reimbursementNo: string
+  totalAmount: number
+  status: number
+  source: string
+  processInstanceId?: string
+  aiFailureMessage?: string
+  aiWorkflowRunId?: string
+  submitTime?: number | null
+  createTime?: number | null
+  attachments?: ReimbursementAttachmentVO[]
+}
+
+export interface ReimbursementClaimPageReqVO {
+  pageNo: number
+  pageSize: number
+  status?: number
+  source?: string
+  reason?: string
+}
+
+export interface ReimbursementMailImportStartReqVO {
+  mailboxConnectionId: ReimbursementId
+  folder: string
+  lookbackDays: number | null
+  fromDate?: string
+  toDate?: string
+  unreadOnly: boolean
+  subjectKeywords: string
+  senderContains: string
+  maxMessages: number
+}
+
+export interface ReimbursementMailImportStartRespVO {
+  reimbursementId: ReimbursementId
+  status: number
+  submitMode: string
+}
+
+export const createClaim = async (data: ReimbursementClaimVO) => {
+  return await request.post<ReimbursementId>({ url: '/reimbursement/claim/create', data })
+}
+
+export const deleteClaim = async (id: ReimbursementId) => {
+  return await request.delete<boolean>({ url: '/reimbursement/claim/delete?id=' + id })
 }
 
 export const updateClaim = async (data: ReimbursementClaimVO) => {
-  return await request.put({ url: '/reimbursement/claim/update', data })
+  return await request.put<boolean>({ url: '/reimbursement/claim/update', data })
 }
 
 export const submitClaim = async (data: {
-  id: number
-  startUserSelectAssignees?: Record<string, number[]>
+  id: ReimbursementId
+  startUserSelectAssignees?: Record<string, ReimbursementId[]>
 }) => {
   return await request.post({ url: '/reimbursement/claim/submit', data })
 }
 
-export const getClaim = async (id: number) => {
-  return await request.get({ url: '/reimbursement/claim/get?id=' + id })
+export const getClaim = async (id: ReimbursementId) => {
+  return await request.get<ReimbursementClaimResponseVO>({
+    url: '/reimbursement/claim/get?id=' + id
+  })
 }
 
-export const getClaimPage = async (params: any) => {
-  return await request.get({ url: '/reimbursement/claim/page', params })
+export const getClaimPage = async (params: ReimbursementClaimPageReqVO) => {
+  return await request.get<PageResult<ReimbursementClaimResponseVO[]>>({
+    url: '/reimbursement/claim/page',
+    params
+  })
 }
 
-export const startMailImport = async (data: any) => {
-  return await request.post({ url: '/reimbursement/mail-import/start', data })
+export const startMailImport = async (data: ReimbursementMailImportStartReqVO) => {
+  return await request.post<ReimbursementMailImportStartRespVO>({
+    url: '/reimbursement/mail-import/start',
+    data
+  })
 }
 
-export const getAttachmentAccessUrl = async (reimbursementId: number, attachmentId: number) => {
-  return await request.get({
+export const getAttachmentAccessUrl = async (
+  reimbursementId: ReimbursementId,
+  attachmentId: ReimbursementId
+) => {
+  return await request.get<string>({
     url: '/reimbursement/claim/attachment/access-url',
     params: { reimbursementId, attachmentId }
   })
