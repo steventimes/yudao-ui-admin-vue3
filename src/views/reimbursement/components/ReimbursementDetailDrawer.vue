@@ -52,7 +52,7 @@
       /><el-table-column prop="sha256" label="SHA-256" min-width="220" /><el-table-column
         label="预览"
         ><template #default="{ row }"
-          ><el-link @click="openAttachment(row)">打开</el-link></template
+          ><el-link underline="hover" @click="openAttachment(row)">打开</el-link></template
         ></el-table-column
       ></el-table
     ></el-drawer

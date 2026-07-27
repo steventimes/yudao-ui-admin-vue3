@@ -2,7 +2,8 @@ const failureMessageLabels: Record<string, string> = {
   NO_REIMBURSABLE_DATA: '未找到可报销数据',
   SEARCH_INCOMPLETE:
     '邮箱搜索结果不完整，系统未创建报销明细。请缩短日期范围或提高“最大邮件数”后重试',
-  DIFY_WORKFLOW_FAILED: '邮箱读取或 AI 工作流执行失败，请重新发起；若持续失败请联系管理员查看运行记录',
+  DIFY_WORKFLOW_FAILED:
+    '邮箱读取或 AI 工作流执行失败，请重新发起；若持续失败请联系管理员查看运行记录',
   DIFY_WORKFLOW_TIMEOUT: 'AI 处理超时或服务曾重启，本次导入已结束，请重新发起',
   ATTACHMENT_EXTRACTION_FAILED: '邮件附件无法读取或文件已损坏，请检查附件后重新发起导入',
   DUPLICATE_EMAIL_IMPORT: '该邮箱邮件已经生成过报销单，已阻止重复导入',
