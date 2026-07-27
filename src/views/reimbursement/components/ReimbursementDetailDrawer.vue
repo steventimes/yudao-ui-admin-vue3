@@ -5,8 +5,9 @@
       ><el-descriptions-item label="状态">{{ statusLabel(record.status) }}</el-descriptions-item
       ><el-descriptions-item label="来源">{{ sourceLabel(record.source) }}</el-descriptions-item
       ><el-descriptions-item label="总金额">{{ record.totalAmount }}</el-descriptions-item
-      ><el-descriptions-item label="事由" :span="2">{{
-        record.reason
+      ><el-descriptions-item label="事由" :span="2">{{ record.reason }}</el-descriptions-item
+      ><el-descriptions-item v-if="record.aiWorkflowRunId" label="Dify 运行编号" :span="2">{{
+        record.aiWorkflowRunId
       }}</el-descriptions-item> </el-descriptions
     ><el-alert
       v-if="record?.status === 30 && record?.aiFailureMessage"
@@ -51,6 +52,7 @@
 <script setup lang="ts">
 import { getAttachmentAccessUrl } from '@/api/reimbursement'
 import { ElMessage } from 'element-plus'
+import { reimbursementFailureMessageLabel as failureMessageLabel } from '../failureMessage'
 const visible = ref(false),
   record = ref<any>()
 const statusLabel = (value: number) =>
@@ -73,14 +75,6 @@ const sourceLabel = (value: string) =>
   )[value] ||
   value ||
   '未知'
-const failureMessageLabel = (value: string) =>
-  (
-    ({
-      'Dify workflow completed without ai-fill':
-        '未生成可报销明细，请检查邮件内容或 Dify 工作流配置',
-      'Dify workflow failed': 'Dify 工作流调用失败，请检查配置或稍后重试'
-    }) as Record<string, string>
-  )[value] || value
 const expenseTypeLabel = (value: string) =>
   (
     ({ TRANSPORT: '交通', MEAL: '餐饮', LODGING: '住宿', OFFICE: '办公', OTHER: '其他' }) as Record<
@@ -98,7 +92,13 @@ const formatExpenseDate = (value: unknown) => {
   return value ? String(value) : '-'
 }
 const openAttachment = async (row: any) => {
-  const url = await getAttachmentAccessUrl(record.value.id, row.id)
+  let url: string
+  try {
+    url = await getAttachmentAccessUrl(record.value.id, row.id)
+  } catch {
+    // 请求拦截器已经展示失败原因。
+    return
+  }
   let parsedUrl: URL
   try {
     parsedUrl = new URL(url, window.location.origin)

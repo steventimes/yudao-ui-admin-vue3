@@ -49,13 +49,20 @@
 <script setup lang="ts">
 import { getClaim, startMailImport } from '@/api/reimbursement'
 import { ElMessage } from 'element-plus'
+import dayjs from 'dayjs'
 import { getMailboxPage } from '@/api/reimbursement/mailbox'
-const emit = defineEmits(['finished'])
+import { reimbursementFailureMessageLabel } from '../failureMessage'
+const emit = defineEmits(['started', 'finished'])
+const MAX_DATE_RANGE_DAYS = 365
 const importing = ref(false)
 const visible = ref(false)
 const mailboxes = ref<any[]>([])
-let timer: number | undefined
-let polling = false
+interface ImportPollState {
+  timer?: number
+  polling: boolean
+  consecutiveFailures: number
+}
+const pollers = new Map<number, ImportPollState>()
 const formData = reactive<any>({
   mailboxConnectionId: undefined,
   folder: 'INBOX',
@@ -68,22 +75,75 @@ const formData = reactive<any>({
   maxMessages: 20
 })
 const open = async () => {
-  mailboxes.value = (await getMailboxPage({ pageNo: 1, pageSize: 50, status: 1 })).list || []
-  visible.value = true
+  try {
+    mailboxes.value = (await getMailboxPage({ pageNo: 1, pageSize: 50, status: 1 })).list || []
+    visible.value = true
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
 }
-const clearPoller = () => {
-  if (timer) window.clearInterval(timer)
-  timer = undefined
-  polling = false
+const clearPoller = (reimbursementId: number) => {
+  const state = pollers.get(reimbursementId)
+  if (state?.timer) window.clearInterval(state.timer)
+  pollers.delete(reimbursementId)
+}
+const clearAllPollers = () => {
+  for (const reimbursementId of pollers.keys()) clearPoller(reimbursementId)
+}
+const pollImportResult = async (reimbursementId: number) => {
+  const state = pollers.get(reimbursementId)
+  if (!state || state.polling) return
+  state.polling = true
+  try {
+    const claim = await getClaim(reimbursementId)
+    state.consecutiveFailures = 0
+    if (claim.status === 10) return
+
+    clearPoller(reimbursementId)
+    if (claim.status === 20) {
+      ElMessage.success('邮箱报销明细已生成，请确认后提交')
+    } else if (claim.status === 40) {
+      ElMessage.success('邮箱报销明细已生成并自动提交')
+    } else if (claim.status === 30) {
+      ElMessage.error(
+        reimbursementFailureMessageLabel(claim.aiFailureMessage) || '邮箱导入失败，请稍后重试'
+      )
+    } else {
+      ElMessage.warning('邮箱导入已结束，当前状态：' + claim.status)
+    }
+    emit('finished', claim)
+  } catch {
+    state.consecutiveFailures += 1
+    if (state.consecutiveFailures >= 3) {
+      clearPoller(reimbursementId)
+      ElMessage.warning('暂时无法查询导入进度，请刷新列表查看最新状态')
+    }
+  } finally {
+    state.polling = false
+  }
+}
+const startPoller = (reimbursementId: number) => {
+  clearPoller(reimbursementId)
+  const state: ImportPollState = { polling: false, consecutiveFailures: 0 }
+  pollers.set(reimbursementId, state)
+  state.timer = window.setInterval(() => void pollImportResult(reimbursementId), 2000)
+  void pollImportResult(reimbursementId)
 }
 const startImport = async () => {
   if (!formData.mailboxConnectionId) {
     ElMessage.warning('请先选择已验证邮箱')
     return
   }
-  if (formData.timeFilterMode === 'range' && formData.dateRange.length !== 2) {
-    ElMessage.warning('请选择完整的日期范围')
-    return
+  if (formData.timeFilterMode === 'range') {
+    if (!Array.isArray(formData.dateRange) || formData.dateRange.length !== 2) {
+      ElMessage.warning('请选择完整的日期范围')
+      return
+    }
+    const inclusiveDays = dayjs(formData.dateRange[1]).diff(dayjs(formData.dateRange[0]), 'day') + 1
+    if (inclusiveDays > MAX_DATE_RANGE_DAYS) {
+      ElMessage.warning('日期范围最多包含 365 天')
+      return
+    }
   }
   importing.value = true
   try {
@@ -100,28 +160,14 @@ const startImport = async () => {
     }
     const result = await startMailImport(requestData)
     visible.value = false
-    let count = 0
-    clearPoller()
-    timer = window.setInterval(async () => {
-      if (polling) return
-      polling = true
-      count += 1
-      try {
-        const claim = await getClaim(result.reimbursementId)
-        if (claim.status !== 10 || count >= 60) {
-          clearPoller()
-          emit('finished', claim)
-        }
-      } catch {
-        clearPoller()
-      } finally {
-        polling = false
-      }
-    }, 2000)
+    emit('started', result)
+    startPoller(result.reimbursementId)
+  } catch {
+    // 请求拦截器已经向用户展示了失败原因，避免事件处理器产生未处理异常。
   } finally {
     importing.value = false
   }
 }
-onUnmounted(clearPoller)
+onUnmounted(clearAllPollers)
 defineExpose({ open })
 </script>

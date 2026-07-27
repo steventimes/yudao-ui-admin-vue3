@@ -43,14 +43,28 @@
       >
       <el-table-column label="操作"
         ><template #default="{ row }"
-          ><el-button link @click="verify(row.id)">验证</el-button
-          ><el-button link type="danger" @click="remove(row.id)">删除</el-button></template
+          ><el-button
+            link
+            :loading="verifyingId === row.id"
+            :disabled="mailboxActionInProgress"
+            @click="verify(row.id)"
+            >验证</el-button
+          ><el-button
+            link
+            type="danger"
+            :loading="deletingId === row.id"
+            :disabled="mailboxActionInProgress"
+            @click="remove(row)"
+            >删除</el-button
+          ></template
         ></el-table-column
       >
     </el-table>
     <template #footer
-      ><el-button @click="visible = false">关闭</el-button
-      ><el-button type="primary" @click="save">保存</el-button></template
+      ><el-button :disabled="mailboxActionInProgress" @click="visible = false">关闭</el-button
+      ><el-button type="primary" :loading="saving" :disabled="mailboxActionInProgress" @click="save"
+        >保存</el-button
+      ></template
     >
   </Dialog>
 </template>
@@ -63,6 +77,12 @@ import {
 } from '@/api/reimbursement/mailbox'
 const visible = ref(false)
 const mailboxes = ref<any[]>([])
+const saving = ref(false)
+const verifyingId = ref<number>()
+const deletingId = ref<number>()
+const mailboxActionInProgress = computed(
+  () => saving.value || verifyingId.value !== undefined || deletingId.value !== undefined
+)
 const formData = reactive<any>({
   providerCode: 'QQ_MAIL',
   email: '',
@@ -80,20 +100,60 @@ const load = async () => {
 }
 const open = async () => {
   visible.value = true
-  await load()
+  try {
+    await load()
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
 }
 const save = async () => {
-  await createMailbox(formData)
-  formData.authorizationCode = ''
-  await load()
+  if (mailboxActionInProgress.value) return
+  saving.value = true
+  try {
+    await createMailbox(formData)
+    formData.authorizationCode = ''
+    await load()
+    ElMessage.success('邮箱保存成功')
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  } finally {
+    saving.value = false
+  }
 }
 const verify = async (id: number) => {
-  await verifyMailbox(id)
-  await load()
+  if (mailboxActionInProgress.value) return
+  verifyingId.value = id
+  try {
+    await verifyMailbox(id)
+    await load()
+    ElMessage.success('邮箱验证成功')
+  } catch {
+    await load().catch(() => undefined)
+  } finally {
+    verifyingId.value = undefined
+  }
 }
-const remove = async (id: number) => {
-  await deleteMailbox(id)
-  await load()
+const remove = async (mailbox: any) => {
+  if (mailboxActionInProgress.value) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除邮箱 ${mailbox.emailNormalized} 吗？删除后需要重新绑定并验证。`,
+      '删除邮箱确认',
+      { type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  deletingId.value = mailbox.id
+  try {
+    await deleteMailbox(mailbox.id)
+    await load()
+    ElMessage.success('邮箱删除成功')
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  } finally {
+    deletingId.value = undefined
+  }
 }
 defineExpose({ open, load })
 </script>

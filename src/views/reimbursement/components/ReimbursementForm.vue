@@ -134,6 +134,8 @@ const submitForm = async () => {
     if (mode.value === 'update') await updateClaim(formData)
     visible.value = false
     emit('success')
+  } catch {
+    // 请求拦截器已经向用户展示了失败原因，保持表单内容便于修正。
   } finally {
     saving.value = false
   }

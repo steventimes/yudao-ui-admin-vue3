@@ -48,12 +48,15 @@
       <el-table-column label="来源" width="150"
         ><template #default="{ row }">{{ sourceLabel(row.source) }}</template></el-table-column
       >
-      <el-table-column label="状态" width="160"
-        ><template #default="{ row }"
-          ><el-tag :type="statusTagType(row.status)">{{
-            statusLabel(row.status)
-          }}</el-tag></template
-        ></el-table-column
+      <el-table-column label="状态" width="240"
+        ><template #default="{ row }">
+          <div class="status-cell">
+            <el-tag :type="statusTagType(row.status)">{{ statusLabel(row.status) }}</el-tag>
+            <span v-if="row.status === 30 && row.aiFailureMessage" class="status-failure">
+              {{ reimbursementFailureMessageLabel(row.aiFailureMessage) }}
+            </span>
+          </div>
+        </template></el-table-column
       >
       <el-table-column label="操作" width="260" fixed="right"
         ><template #default="{ row }"
@@ -93,7 +96,7 @@
   <ReimbursementForm ref="formRef" @success="loadList" />
   <ReimbursementDetailDrawer ref="detailDrawerRef" />
   <MailboxDialog ref="mailboxDialogRef" />
-  <MailImportDialog ref="mailImportDialogRef" @finished="loadList" />
+  <MailImportDialog ref="mailImportDialogRef" @started="loadList" @finished="loadList" />
 </template>
 <script setup lang="ts">
 import { deleteClaim, getClaim, getClaimPage, submitClaim } from '@/api/reimbursement'
@@ -101,6 +104,7 @@ import ReimbursementForm from './components/ReimbursementForm.vue'
 import ReimbursementDetailDrawer from './components/ReimbursementDetailDrawer.vue'
 import MailboxDialog from './components/MailboxDialog.vue'
 import MailImportDialog from './components/MailImportDialog.vue'
+import { reimbursementFailureMessageLabel } from './failureMessage'
 defineOptions({ name: 'ReimbursementClaim' })
 const router = useRouter(),
   list = ref<any[]>([]),
@@ -109,6 +113,9 @@ const router = useRouter(),
   detailDrawerRef = ref(),
   mailboxDialogRef = ref(),
   mailImportDialogRef = ref()
+let processingRefreshTimer: number | undefined
+let listLoading = false
+let listReloadPending = false
 const queryParams = reactive<any>({
   pageNo: 1,
   pageSize: 10,
@@ -141,21 +148,67 @@ const statusTagType = (value: number) =>
       : value === 20
         ? 'warning'
         : 'info'
+const stopProcessingRefresh = () => {
+  if (processingRefreshTimer) window.clearInterval(processingRefreshTimer)
+  processingRefreshTimer = undefined
+}
+const syncProcessingRefresh = () => {
+  if (!list.value.some((row) => row.status === 10)) {
+    stopProcessingRefresh()
+    return
+  }
+  if (!processingRefreshTimer) {
+    processingRefreshTimer = window.setInterval(() => void loadList(), 2000)
+  }
+}
 const loadList = async () => {
-  const data = await getClaimPage(queryParams)
-  list.value = data.list || []
-  total.value = data.total || 0
+  if (listLoading) {
+    listReloadPending = true
+    return
+  }
+  listLoading = true
+  try {
+    do {
+      listReloadPending = false
+      const data = await getClaimPage(queryParams)
+      list.value = data.list || []
+      total.value = data.total || 0
+      syncProcessingRefresh()
+    } while (listReloadPending)
+  } catch {
+    // 请求拦截器已经展示失败原因；停止自动刷新，避免持续失败时重复提示。
+    stopProcessingRefresh()
+  } finally {
+    listLoading = false
+    if (listReloadPending) void loadList()
+  }
 }
 const handleQuery = () => {
   queryParams.pageNo = 1
-  loadList()
+  void loadList()
 }
 const openCreate = () => formRef.value?.open('create')
-const openDetail = async (row: any) => detailDrawerRef.value?.open(await getClaim(row.id))
-const openEdit = async (row: any) => formRef.value?.open('update', await getClaim(row.id))
+const openDetail = async (row: any) => {
+  try {
+    detailDrawerRef.value?.open(await getClaim(row.id))
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
+}
+const openEdit = async (row: any) => {
+  try {
+    formRef.value?.open('update', await getClaim(row.id))
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
+}
 const submit = async (row: any) => {
-  await submitClaim({ id: row.id })
-  await loadList()
+  try {
+    await submitClaim({ id: row.id })
+    await loadList()
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
 }
 const remove = async (row: any) => {
   try {
@@ -164,17 +217,30 @@ const remove = async (row: any) => {
       '删除确认',
       { type: 'warning' }
     )
-  } catch (action) {
-    if (action === 'cancel' || action === 'close') return
-    throw action
+  } catch {
+    return
   }
-  await deleteClaim(row.id)
-  ElMessage.success('删除成功')
-  await loadList()
+  try {
+    await deleteClaim(row.id)
+    ElMessage.success('删除成功')
+    await loadList()
+  } catch {
+    // 请求拦截器已经展示失败原因。
+  }
 }
 const openProcess = (row: any) =>
   router.push({ name: 'BpmProcessInstanceDetail', query: { id: row.processInstanceId } })
+let initialActivation = true
 onMounted(loadList)
+onActivated(() => {
+  if (initialActivation) {
+    initialActivation = false
+    return
+  }
+  void loadList()
+})
+onDeactivated(stopProcessingRefresh)
+onUnmounted(stopProcessingRefresh)
 </script>
 <style scoped>
 .reimbursement-filter-form {
@@ -201,7 +267,20 @@ onMounted(loadList)
   margin-left: auto;
 }
 
-@media (width <= 1100px) {
+.status-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.status-failure {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--el-text-color-secondary);
+}
+
+@media (width <=1100px) {
   .reimbursement-filter-form .filter-actions {
     margin-left: 0;
   }
